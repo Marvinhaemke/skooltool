@@ -8,6 +8,8 @@
     "api/cron/sync.js": { "memory": 1024, "maxDuration": 60 },
     "api/cron/worker.js": { "memory": 1024, "maxDuration": 60 },
     "api/sync.js": { "memory": 1024, "maxDuration": 60 },
+    "api/selftest.js": { "memory": 1024, "maxDuration": 60 },
+    "api/testdm.js": { "memory": 1024, "maxDuration": 60 },
     "api/massdm/index.js": { "memory": 512, "maxDuration": 30 },
     "api/massdm/cancel.js": { "memory": 256, "maxDuration": 15 },
     "api/config.js": { "memory": 256, "maxDuration": 30 },

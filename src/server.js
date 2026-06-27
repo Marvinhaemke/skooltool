@@ -11,6 +11,8 @@ import {
   handleMassDm,
   handleCancelMassDm,
   handleCronWorker,
+  handleSelfTest,
+  handleTestDm,
 } from './handlers.js';
 
 const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
@@ -38,6 +40,9 @@ export function createServer() {
   app.post('/api/sync', route(handleSync));
   app.post('/api/massdm', route(handleMassDm));
   app.post('/api/massdm/cancel', route(handleCancelMassDm));
+  // Connection & selector diagnostics.
+  app.post('/api/selftest', route(handleSelfTest));
+  app.post('/api/testdm', route(handleTestDm));
   // Lets you run the DM-queue worker manually when self-hosting.
   app.post('/api/worker', route(handleCronWorker));
 

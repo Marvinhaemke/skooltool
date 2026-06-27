@@ -100,6 +100,30 @@
     </div>
 
     <div class="card">
+      <h2>Diagnostics — connection &amp; selector self-test</h2>
+      <p class="muted">Runs the real flow against your community (login → open members page → parse a sample) and reports what worked, so you can confirm it works and spot any selector that needs tuning. Takes ~10–30s.</p>
+      <div class="actions">
+        <button onclick="selfTest()" id="selfTestBtn">Test connection</button>
+      </div>
+      <div id="selftest"></div>
+      <hr style="border:0; border-top:1px solid var(--line); margin:16px 0" />
+      <div class="row">
+        <div>
+          <label>Send a test DM to handle</label>
+          <input id="testHandle" placeholder="@your-own-handle" />
+        </div>
+        <div>
+          <label>Test message</label>
+          <input id="testMsg" placeholder="Test DM from skooltool ✅" />
+        </div>
+      </div>
+      <div class="actions">
+        <button class="secondary" onclick="sendTestDm()" id="testDmBtn">Send test DM</button>
+      </div>
+      <p class="muted">Tip: DM yourself first. This bypasses the daily quota and the job queue.</p>
+    </div>
+
+    <div class="card">
       <div class="grid2">
         <div>
           <h2>Status</h2>
@@ -216,6 +240,45 @@
     async function cancelMassDm() {
       try { await api('/api/massdm/cancel', 'POST', {}); toast('Job cancelled'); loadStatus(); }
       catch (e) { toast('Cancel failed: ' + e.message); }
+    }
+
+    function esc(s) { return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+    function renderSelfTest(r) {
+      const rows = (r.steps || []).map(s => {
+        let extra = '';
+        if (s.signals) {
+          extra += `<div class="muted" style="margin-left:24px">embedded data: ${s.signals.embeddedData ? 'yes' : 'no'} · members in data: ${s.signals.membersFromEmbeddedData} · profile links: ${s.signals.profileLinksOnPage}</div>`;
+        }
+        if (s.redirectedTo) extra += `<div class="muted" style="margin-left:24px">redirected to: ${esc(s.redirectedTo)}</div>`;
+        if (s.sample && s.sample.length) {
+          extra += `<pre style="margin:6px 0 0 24px">${esc(JSON.stringify(s.sample.slice(0,3), null, 2))}</pre>`;
+        }
+        return `<div class="statline"><span>${s.ok ? '✅' : '❌'} ${esc(s.step)}</span></div>
+                <div class="muted" style="margin:2px 0 6px 24px">${esc(s.detail || '')}</div>${extra}`;
+      }).join('');
+      $('selftest').innerHTML = `<div style="margin-top:10px">
+        <b>${r.ok ? '✅ All good' : '⚠ Something needs attention'}</b>
+        <span class="muted">· ${(r.durationMs/1000).toFixed(1)}s</span>
+      </div>${rows}`;
+    }
+
+    async function selfTest() {
+      const btn = $('selfTestBtn'); btn.disabled = true; btn.textContent = 'Testing… (~10–30s)';
+      $('selftest').innerHTML = '<p class="muted">Running…</p>';
+      try { renderSelfTest(await api('/api/selftest', 'POST', {})); }
+      catch (e) { $('selftest').innerHTML = '<p class="muted">Failed: ' + esc(e.message) + '</p>'; }
+      finally { btn.disabled = false; btn.textContent = 'Test connection'; }
+    }
+
+    async function sendTestDm() {
+      const handle = $('testHandle').value.trim();
+      const message = $('testMsg').value.trim();
+      if (!handle || !message) return toast('Enter a handle and a message');
+      const btn = $('testDmBtn'); btn.disabled = true; btn.textContent = 'Sending…';
+      try { await api('/api/testdm', 'POST', { handle, message }); toast('Test DM sent to @' + handle.replace(/^@/, '') + ' ✓'); }
+      catch (e) { toast('Test DM failed: ' + e.message); }
+      finally { btn.disabled = false; btn.textContent = 'Send test DM'; }
     }
 
     if (adminPw) { $('adminPw').value = adminPw; }
