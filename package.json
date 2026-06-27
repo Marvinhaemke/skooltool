@@ -1,0 +1,27 @@
+{
+  "name": "skooltool",
+  "version": "0.1.0",
+  "description": "Headless-browser automation for a Skool community: daily new-member -> Zapier webhook, plus rule-based and bulk DMs.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "sync": "node src/cli.js sync",
+    "sync:dry": "node src/cli.js sync --dry-run",
+    "login": "node src/cli.js login",
+    "massdm": "node src/cli.js massdm",
+    "members": "node src/cli.js members",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "node-cron": "^3.0.3",
+    "pino": "^9.3.2",
+    "pino-pretty": "^11.2.2",
+    "playwright": "^1.45.0"
+  },
+  "license": "MIT"
+}
