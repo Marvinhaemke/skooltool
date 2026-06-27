@@ -1,20 +1,23 @@
 import { readFile } from 'node:fs/promises';
 import { logger } from './logger.js';
+import { getSettings } from './settings.js';
 import { runSync } from './services/sync.js';
-import { massDm } from './services/massdm.js';
+import { massDmNow, processQueue, jobStatus } from './services/dmqueue.js';
 import { getMembers } from './skool/client.js';
 import { SkoolSession } from './skool/session.js';
-import { getStore } from './store.js';
+import { getStatus } from './state.js';
+import { config } from './config.js';
 
 /**
- * CLI for manual / scripted operations:
+ * CLI for manual / scripted operations (self-hosted use):
  *
- *   npm run login              # log in once and save the session (use HEADLESS=false for 2FA)
+ *   npm run login              # log in once and save the session
  *   npm run sync               # run the daily sync now
- *   npm run sync:dry           # dry-run: scrape + diff, but send nothing, save nothing
+ *   npm run sync:dry           # dry-run: scrape + diff, send/save nothing
  *   npm run members            # scrape and print the current member list
+ *   npm run worker             # drain the mass-DM queue once
  *   npm run massdm -- --to @a,@b --template "Hi {{name}}"
- *   npm run massdm -- --all --template-file msg.txt --dry-run
+ *   npm run massdm -- --all --template-file msg.txt
  */
 
 function parseArgs(argv) {
@@ -24,15 +27,9 @@ function parseArgs(argv) {
     if (a.startsWith('--')) {
       const key = a.slice(2);
       const next = argv[i + 1];
-      if (next === undefined || next.startsWith('--')) {
-        args[key] = true;
-      } else {
-        args[key] = next;
-        i++;
-      }
-    } else {
-      args._.push(a);
-    }
+      if (next === undefined || next.startsWith('--')) args[key] = true;
+      else { args[key] = next; i++; }
+    } else args._.push(a);
   }
   return args;
 }
@@ -41,22 +38,27 @@ async function cmdLogin() {
   const session = new SkoolSession();
   try {
     await session.ensureLogin();
-    logger.info('Login OK — session saved to data/session.json');
+    logger.info('Login OK — session saved');
   } finally {
     await session.close();
   }
 }
 
 async function cmdMembers() {
+  const settings = await getSettings();
   const session = new SkoolSession();
   try {
     await session.ensureLogin();
     const page = await session.page();
-    const members = await getMembers(page);
+    const { members, complete } = await getMembers(page, {
+      community: settings.skool.community,
+      baseUrl: settings.skool.baseUrl,
+      budgetMs: config.browser.scrapeBudgetMs,
+    });
     await page.close();
     // eslint-disable-next-line no-console
     console.log(JSON.stringify(members, null, 2));
-    logger.info({ count: members.length }, 'Done');
+    logger.info({ count: members.length, complete }, 'Done');
   } finally {
     await session.close();
   }
@@ -68,26 +70,23 @@ async function cmdSync(args) {
   console.log(JSON.stringify(res, null, 2));
 }
 
+async function cmdWorker() {
+  const res = await processQueue({ budgetMs: config.browser.workerBudgetMs });
+  // eslint-disable-next-line no-console
+  console.log(JSON.stringify({ ...res, job: await jobStatus() }, null, 2));
+}
+
 async function cmdMassdm(args) {
   let template = args.template;
-  if (args['template-file']) {
-    template = (await readFile(args['template-file'], 'utf8')).trim();
-  }
+  if (args['template-file']) template = (await readFile(args['template-file'], 'utf8')).trim();
   if (!template) throw new Error('Provide --template "..." or --template-file path');
 
   let recipients;
-  if (args.all) {
-    recipients = 'all';
-  } else if (args.to) {
-    recipients = String(args.to).split(',').map((s) => s.trim()).filter(Boolean);
-  } else {
-    throw new Error('Provide --all or --to @handle1,@handle2');
-  }
+  if (args.all) recipients = 'all';
+  else if (args.to) recipients = String(args.to).split(',').map((s) => s.trim()).filter(Boolean);
+  else throw new Error('Provide --all or --to @handle1,@handle2');
 
-  const res = await massDm({
-    recipients,
-    template,
-    dryRun: Boolean(args['dry-run']),
+  const res = await massDmNow(recipients, template, {
     skipAlreadyMessaged: Boolean(args['skip-messaged']),
   });
   // eslint-disable-next-line no-console
@@ -95,19 +94,15 @@ async function cmdMassdm(args) {
 }
 
 async function cmdStatus() {
-  const store = await getStore();
   // eslint-disable-next-line no-console
-  console.log(JSON.stringify({
-    lastSyncAt: store.data.lastSyncAt,
-    totalMembers: Object.keys(store.data.members).length,
-    dmLogSize: store.data.dmLog.length,
-  }, null, 2));
+  console.log(JSON.stringify({ ...(await getStatus()), job: await jobStatus() }, null, 2));
 }
 
 const COMMANDS = {
   login: cmdLogin,
   members: cmdMembers,
   sync: cmdSync,
+  worker: cmdWorker,
   massdm: cmdMassdm,
   status: cmdStatus,
 };
@@ -115,7 +110,6 @@ const COMMANDS = {
 async function main() {
   const argv = process.argv.slice(2);
   const cmd = argv[0];
-  const args = parseArgs(argv.slice(1));
   const handler = COMMANDS[cmd];
   if (!handler) {
     // eslint-disable-next-line no-console
@@ -123,7 +117,7 @@ async function main() {
     process.exit(1);
   }
   try {
-    await handler(args);
+    await handler(parseArgs(argv.slice(1)));
     process.exit(0);
   } catch (err) {
     logger.error({ err }, `Command "${cmd}" failed`);

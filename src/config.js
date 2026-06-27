@@ -1,42 +1,31 @@
 import 'dotenv/config';
 
+/**
+ * Infrastructure-level config from the environment. Things that are tied to the
+ * deployment itself (where data lives, how the browser launches, the HTTP port,
+ * the encryption secret) stay here.
+ *
+ * Operational config that you want to change without redeploying — the Skool
+ * link/login, Zapier URL, rate limits, auto-DM switch — lives in src/settings.js
+ * and is editable from the in-app settings page.
+ */
+
 function bool(value, fallback = false) {
   if (value === undefined || value === '') return fallback;
   return ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());
 }
-
 function int(value, fallback) {
   const n = parseInt(value, 10);
   return Number.isFinite(n) ? n : fallback;
 }
 
-function required(name) {
-  const v = process.env[name];
-  if (!v) {
-    throw new Error(
-      `Missing required env var ${name}. Copy .env.example to .env and fill it in.`
-    );
-  }
-  return v;
-}
+// On Vercel only /tmp is writable; elsewhere use the repo's data/ dir.
+const onVercel = Boolean(process.env.VERCEL);
+const dataDir = onVercel ? '/tmp/skooltool/' : new URL('../data/', import.meta.url).pathname;
 
 export const config = {
-  skool: {
-    get email() {
-      return required('SKOOL_EMAIL');
-    },
-    get password() {
-      return required('SKOOL_PASSWORD');
-    },
-    get community() {
-      return required('SKOOL_COMMUNITY');
-    },
-    baseUrl: 'https://www.skool.com',
-  },
-  webhook: {
-    daily: process.env.ZAPIER_WEBHOOK_URL || '',
-    event: process.env.ZAPIER_EVENT_WEBHOOK_URL || process.env.ZAPIER_WEBHOOK_URL || '',
-  },
+  onVercel,
+  dataDir,
   schedule: {
     dailyCron: process.env.DAILY_SYNC_CRON || '0 9 * * *',
     timezone: process.env.TZ || 'UTC',
@@ -45,20 +34,15 @@ export const config = {
   browser: {
     headless: bool(process.env.HEADLESS, true),
     slowMo: int(process.env.SLOW_MO_MS, 0),
-  },
-  dm: {
-    minDelayMs: int(process.env.DM_MIN_DELAY_MS, 8000),
-    maxDelayMs: int(process.env.DM_MAX_DELAY_MS, 20000),
-    maxPerRun: int(process.env.DM_MAX_PER_RUN, 40),
-    maxPerDay: int(process.env.DM_MAX_PER_DAY, 150),
-  },
-  autoDm: {
-    enabled: bool(process.env.AUTO_DM_ENABLED, false),
+    // Soft time budget (ms) for a single scrape inside a serverless function.
+    scrapeBudgetMs: int(process.env.SCRAPE_BUDGET_MS, onVercel ? 45000 : 600000),
+    // Soft time budget for one DM-queue worker invocation.
+    workerBudgetMs: int(process.env.WORKER_BUDGET_MS, onVercel ? 45000 : 600000),
   },
   server: {
     port: int(process.env.PORT, 3000),
-    apiKey: process.env.API_KEY || '',
   },
+  // Shared secret for cron endpoints (Vercel sends it as a Bearer token).
+  cronSecret: process.env.CRON_SECRET || '',
   logLevel: process.env.LOG_LEVEL || 'info',
-  dataDir: new URL('../data/', import.meta.url).pathname,
 };
