@@ -17,6 +17,12 @@ It does three things:
    Sending is a **resumable job** that drips out over time, respecting daily
    caps — so even thousands of recipients work.
 
+Plus a **built-in connection & selector self-test** (settings page → *Diagnostics*):
+one click logs in, opens the members page, parses a sample, and reports exactly
+what worked — so you can confirm it works against your community and see which
+selector needs tuning when something breaks. There's also a **send-a-test-DM**
+box to verify the DM flow (DM yourself first).
+
 The Skool link, login, Zapier URLs, rate limits and auto-DM switch are all
 **configured at runtime from the built-in settings page** (`/`) — no redeploy
 needed to change them.
@@ -191,10 +197,18 @@ Defaults live in `src/rules.js`; override them from the store (saved via
 
 All Skool-DOM-specific selectors live in `src/skool/selectors.js`. Member
 scraping prefers Skool's embedded `__NEXT_DATA__` (stable); login and DM-send
-go through the rendered UI, so those are the most likely to need adjusting:
+go through the rendered UI, so those are the most likely to need adjusting.
+
+The fastest way to check is the **Diagnostics → Test connection** button in the
+settings UI (or `POST /api/selftest`): it reports per-step what matched
+(login, embedded data present, member count, profile links) and shows a parsed
+sample, so you can tell at a glance whether a selector needs updating. To watch
+it happen locally:
 
 ```bash
 HEADLESS=false SLOW_MO_MS=200 npm run members
+# point at an existing Chrome instead of a managed download, if you like:
+CHROMIUM_EXECUTABLE_PATH=/path/to/chrome npm run members
 ```
 
 ### Known gaps

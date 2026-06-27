@@ -32,10 +32,16 @@ export async function launchBrowser() {
   }
 
   const { chromium } = await import('playwright');
-  logger.info({ headless: config.browser.headless }, 'Launching local Chromium (playwright)');
+  // Optional override: point at an already-present Chrome/Chromium binary
+  // (handy for CI, sandboxes, or a system Chrome) instead of Playwright's
+  // managed download.
+  const executablePath =
+    process.env.CHROMIUM_EXECUTABLE_PATH || process.env.PLAYWRIGHT_EXECUTABLE_PATH || undefined;
+  logger.info({ headless: config.browser.headless, executablePath }, 'Launching local Chromium (playwright)');
   return chromium.launch({
     headless: config.browser.headless,
     slowMo: config.browser.slowMo,
+    executablePath,
     args: ['--disable-blink-features=AutomationControlled'],
   });
 }

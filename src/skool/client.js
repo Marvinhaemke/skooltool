@@ -73,6 +73,48 @@ export function normalizeMember(raw, baseUrl = BASE_URL) {
 }
 
 /**
+ * Fast, single-pass diagnostic of the members page (no scrolling). Reports
+ * which signals matched so the UI self-test can tell you whether selectors need
+ * tuning and show a sample of what was parsed.
+ *
+ * @returns {Promise<{ url, currentUrl, hasNextData, nextDataMemberCount,
+ *   profileLinkCount, totalUnique, sample: object[] }>}
+ */
+export async function probeMembers(page, { community, baseUrl = BASE_URL } = {}) {
+  const url = `${baseUrl}/${community}${selectors.members.pathSuffix}`;
+  await page.goto(url, { waitUntil: 'domcontentloaded' });
+  await sleep(2500);
+
+  const nextData = await readNextData(page);
+  const fromNextData = nextData ? harvestMembers(nextData, []) : [];
+
+  const hrefs = await page
+    .locator(selectors.members.rowLink)
+    .evaluateAll((els) => els.map((e) => e.getAttribute('href')))
+    .catch(() => []);
+  const profileHrefs = hrefs.filter((h) => h && /@[\w.-]+/.test(h));
+
+  const map = new Map();
+  for (const m of fromNextData) map.set(m.handle, m);
+  for (const href of profileHrefs) {
+    const mm = href.match(/@([\w.-]+)/);
+    if (mm && !map.has(mm[1])) {
+      map.set(mm[1], { handle: mm[1], name: mm[1], profileUrl: `${baseUrl}/@${mm[1]}` });
+    }
+  }
+  const members = [...map.values()];
+  return {
+    url,
+    currentUrl: page.url(),
+    hasNextData: Boolean(nextData),
+    nextDataMemberCount: fromNextData.length,
+    profileLinkCount: profileHrefs.length,
+    totalUnique: members.length,
+    sample: members.slice(0, 5),
+  };
+}
+
+/**
  * Scrape the member list for a community.
  *
  * @param {import('playwright').Page} page

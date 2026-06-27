@@ -5,6 +5,7 @@ import { runSyncGuarded } from './runner.js';
 import { runSync } from './services/sync.js';
 import { enqueueMassDm, processQueue, jobStatus, clearJob } from './services/dmqueue.js';
 import { loadRules, saveRules } from './rules.js';
+import { runSelfTest, sendTestDm } from './services/diagnostics.js';
 import { config } from './config.js';
 
 /**
@@ -79,6 +80,28 @@ export async function handleCancelMassDm(req) {
   if (!gate.allowed) return unauthorized(gate.bootstrap);
   await clearJob();
   return { status: 200, body: { ok: true } };
+}
+
+export async function handleSelfTest(req) {
+  const gate = await requireAdmin(req);
+  if (!gate.allowed) return unauthorized(gate.bootstrap);
+  const result = await runSelfTest();
+  return { status: 200, body: result };
+}
+
+export async function handleTestDm(req) {
+  const gate = await requireAdmin(req);
+  if (!gate.allowed) return unauthorized(gate.bootstrap);
+  const { handle, message } = req.body || {};
+  if (!handle || !message) {
+    return { status: 400, body: { error: 'handle and message are required' } };
+  }
+  try {
+    const result = await sendTestDm({ handle, message });
+    return { status: 200, body: result };
+  } catch (err) {
+    return { status: 502, body: { ok: false, error: String(err?.message || err) } };
+  }
 }
 
 // --- Cron-triggered (Vercel Cron sends Authorization: Bearer CRON_SECRET) ---

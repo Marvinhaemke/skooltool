@@ -1,0 +1,19 @@
+# These are the SELF-HOSTED (long-running) entrypoints. They are never used on
+# Vercel — the serverless functions live in api/ and import only the shared
+# modules in src/ (handlers, services, skool, etc.), never these files.
+#
+# They MUST be excluded from the Vercel build: src/server.js creates an Express
+# app and calls app.listen(), which Vercel's framework auto-detection picks up
+# and builds as a Serverless Function. That function has no valid default export
+# (it exports createServer/startServer), so any request routed to it crashes
+# with FUNCTION_INVOCATION_FAILED. Removing these files removes the server Vercel
+# would otherwise try to build.
+src/index.js
+src/server.js
+src/scheduler.js
+src/cli.js
+
+# Local-only artifacts
+data
+*.log
+test
