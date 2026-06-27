@@ -1,58 +1,45 @@
 import express from 'express';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { config } from './config.js';
 import { logger } from './logger.js';
-import { getStore } from './store.js';
-import { runSyncGuarded, isSyncRunning } from './scheduler.js';
-import { massDm } from './services/massdm.js';
+import {
+  handleStatus,
+  handleGetConfig,
+  handleSaveConfig,
+  handleSync,
+  handleMassDm,
+  handleCancelMassDm,
+  handleCronWorker,
+} from './handlers.js';
 
-/**
- * Minimal control surface. Every mutating endpoint requires the shared
- * secret in the `x-api-key` header (set API_KEY in .env).
- */
+const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
+
+/** Wrap a transport-agnostic handler as an Express route. */
+const route = (handler) => async (req, res) => {
+  try {
+    const { status, body } = await handler({ headers: req.headers, body: req.body });
+    res.status(status).json(body);
+  } catch (err) {
+    logger.error({ err, path: req.path }, 'Request handler failed');
+    res.status(500).json({ error: String(err.message || err) });
+  }
+};
+
 export function createServer() {
   const app = express();
-  app.use(express.json({ limit: '1mb' }));
+  app.use(express.json({ limit: '2mb' }));
+  app.use(express.static(publicDir));
 
-  const requireKey = (req, res, next) => {
-    if (!config.server.apiKey) {
-      return res.status(503).json({ error: 'API_KEY is not configured on the server' });
-    }
-    if (req.get('x-api-key') !== config.server.apiKey) {
-      return res.status(401).json({ error: 'unauthorized' });
-    }
-    next();
-  };
-
-  app.get('/health', (_req, res) => res.json({ ok: true, syncRunning: isSyncRunning() }));
-
-  app.get('/status', requireKey, async (_req, res) => {
-    const store = await getStore();
-    res.json({
-      lastSyncAt: store.data.lastSyncAt,
-      totalMembers: Object.keys(store.data.members).length,
-      dmsToday: store.data.dmDailyCount[new Date().toISOString().slice(0, 10)] || 0,
-      dmLogSize: store.data.dmLog.length,
-      syncRunning: isSyncRunning(),
-    });
-  });
-
-  // Trigger the daily sync on demand. Runs in the background; returns immediately.
-  app.post('/sync', requireKey, (req, res) => {
-    const dryRun = Boolean(req.body?.dryRun);
-    runSyncGuarded({ dryRun }); // fire and forget
-    res.status(202).json({ accepted: true, dryRun });
-  });
-
-  // Send a mass DM. Runs in the background.
-  app.post('/massdm', requireKey, async (req, res) => {
-    const { recipients, template, dryRun, skipAlreadyMessaged } = req.body || {};
-    if (!template || !recipients) {
-      return res.status(400).json({ error: 'recipients and template are required' });
-    }
-    res.status(202).json({ accepted: true });
-    massDm({ recipients, template, dryRun: Boolean(dryRun), skipAlreadyMessaged: Boolean(skipAlreadyMessaged) })
-      .catch((err) => logger.error({ err }, 'massDm (via API) failed'));
-  });
+  app.get('/health', (_req, res) => res.json({ ok: true }));
+  app.get('/api/status', route(handleStatus));
+  app.get('/api/config', route(handleGetConfig));
+  app.post('/api/config', route(handleSaveConfig));
+  app.post('/api/sync', route(handleSync));
+  app.post('/api/massdm', route(handleMassDm));
+  app.post('/api/massdm/cancel', route(handleCancelMassDm));
+  // Lets you run the DM-queue worker manually when self-hosting.
+  app.post('/api/worker', route(handleCronWorker));
 
   return app;
 }
@@ -60,6 +47,6 @@ export function createServer() {
 export function startServer() {
   const app = createServer();
   app.listen(config.server.port, () => {
-    logger.info({ port: config.server.port }, 'Control server listening');
+    logger.info({ port: config.server.port }, 'Control server + settings UI listening');
   });
 }

@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>skooltool — control panel</title>
+  <style>
+    :root { --bg:#0f1115; --card:#1a1d24; --line:#2a2f3a; --fg:#e6e8ee; --mut:#9aa3b2; --acc:#5b8cff; --ok:#2ecc71; --warn:#e67e22; }
+    * { box-sizing: border-box; }
+    body { margin:0; font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--fg); }
+    header { padding:18px 24px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:12px; }
+    header h1 { font-size:18px; margin:0; }
+    .pill { font-size:12px; padding:2px 8px; border-radius:999px; background:#222633; color:var(--mut); }
+    main { max-width:880px; margin:0 auto; padding:24px; display:grid; gap:20px; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px 20px; }
+    .card h2 { font-size:15px; margin:0 0 14px; }
+    label { display:block; font-size:12px; color:var(--mut); margin:10px 0 4px; }
+    input, textarea, select { width:100%; padding:9px 11px; border-radius:8px; border:1px solid var(--line); background:#11141a; color:var(--fg); font:inherit; }
+    textarea { min-height:90px; resize:vertical; }
+    .row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .row4 { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
+    button { background:var(--acc); color:#fff; border:0; padding:9px 16px; border-radius:8px; font-weight:600; cursor:pointer; }
+    button.secondary { background:#272c38; }
+    button.danger { background:#3a2326; color:#ff8a8a; }
+    .actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
+    .muted { color:var(--mut); font-size:12px; }
+    .toggle { display:flex; align-items:center; gap:8px; margin-top:12px; }
+    .toggle input { width:auto; }
+    #toast { position:fixed; bottom:18px; right:18px; background:#222; border:1px solid var(--line); padding:12px 16px; border-radius:8px; opacity:0; transition:.2s; max-width:380px; }
+    #toast.show { opacity:1; }
+    pre { background:#11141a; border:1px solid var(--line); border-radius:8px; padding:12px; overflow:auto; font-size:12px; }
+    .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    .statline { display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px dashed var(--line); }
+    a { color:var(--acc); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>skooltool</h1>
+    <span class="pill" id="cfgPill">loading…</span>
+  </header>
+  <main>
+    <div class="card">
+      <h2>Admin</h2>
+      <p class="muted">All actions require your admin password. It's stored only in this browser and sent as a header. First time? Type a new password and hit “Unlock / set” — saving your config will establish it.</p>
+      <div class="row">
+        <div>
+          <label>Admin password</label>
+          <input id="adminPw" type="password" placeholder="admin password" />
+        </div>
+        <div style="display:flex; align-items:flex-end; gap:10px;">
+          <button onclick="unlock()">Unlock / set</button>
+          <button class="secondary" onclick="loadAll()">Refresh</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Skool connection</h2>
+      <label>Community link or slug</label>
+      <input id="community" placeholder="https://www.skool.com/your-community  (or just the slug)" />
+      <div class="row">
+        <div>
+          <label>Skool login email</label>
+          <input id="email" type="email" placeholder="you@example.com" />
+        </div>
+        <div>
+          <label>Skool password <span class="muted">(leave blank to keep)</span></label>
+          <input id="skoolPw" type="password" placeholder="••••••••" />
+        </div>
+      </div>
+      <p class="muted" id="skoolState"></p>
+    </div>
+
+    <div class="card">
+      <h2>Zapier webhooks</h2>
+      <label>Daily new-member webhook (Zapier Catch Hook)</label>
+      <input id="whDaily" placeholder="https://hooks.zapier.com/hooks/catch/…" />
+      <label>Per-event webhook <span class="muted">(optional; defaults to the daily one)</span></label>
+      <input id="whEvent" placeholder="https://hooks.zapier.com/hooks/catch/…" />
+    </div>
+
+    <div class="card">
+      <h2>DM rate limits &amp; auto-DM</h2>
+      <div class="row4">
+        <div><label>Min delay (ms)</label><input id="dmMin" type="number" /></div>
+        <div><label>Max delay (ms)</label><input id="dmMax" type="number" /></div>
+        <div><label>Max per worker run</label><input id="dmRun" type="number" /></div>
+        <div><label>Max per day</label><input id="dmDay" type="number" /></div>
+      </div>
+      <div class="toggle">
+        <input id="autoDm" type="checkbox" />
+        <label style="margin:0">Enable auto-DMs from trigger rules (new member / subscription / level)</label>
+      </div>
+      <label>Change admin password <span class="muted">(optional)</span></label>
+      <input id="newAdminPw" type="password" placeholder="leave blank to keep current" />
+      <div class="actions">
+        <button onclick="saveConfig()">Save settings</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="grid2">
+        <div>
+          <h2>Status</h2>
+          <div id="status"><span class="muted">unlock to view</span></div>
+          <div class="actions">
+            <button class="secondary" onclick="runSync(false)">Run sync now</button>
+            <button class="secondary" onclick="runSync(true)">Dry-run sync</button>
+          </div>
+        </div>
+        <div>
+          <h2>Mass DM</h2>
+          <label>Recipients <span class="muted">(comma-separated @handles, or the word “all”)</span></label>
+          <input id="recips" placeholder="all   —or—   @alice, @bob" />
+          <label>Message template</label>
+          <textarea id="tmpl" placeholder="Hey {{name}} 👋 …  ({{name}} {{handle}} {{plan}} {{level}})"></textarea>
+          <div class="actions">
+            <button onclick="startMassDm()">Queue mass DM</button>
+            <button class="danger" onclick="cancelMassDm()">Cancel job</button>
+          </div>
+          <p class="muted">Big lists drip out over days, respecting your daily cap. A worker (cron) keeps sending where it left off.</p>
+        </div>
+      </div>
+    </div>
+  </main>
+  <div id="toast"></div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let adminPw = sessionStorage.getItem('adminPw') || '';
+
+    function toast(msg, ms = 3500) {
+      const t = $('toast'); t.textContent = msg; t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), ms);
+    }
+    function headers() {
+      const h = { 'content-type': 'application/json' };
+      if (adminPw) h['x-admin-password'] = adminPw;
+      return h;
+    }
+    async function api(path, method = 'GET', body) {
+      const res = await fetch(path, { method, headers: headers(), body: body ? JSON.stringify(body) : undefined });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || (res.status + ' error'));
+      return data;
+    }
+
+    function unlock() {
+      adminPw = $('adminPw').value.trim();
+      sessionStorage.setItem('adminPw', adminPw);
+      loadAll();
+    }
+
+    async function loadAll() {
+      try {
+        const cfg = await api('/api/config');
+        const s = cfg.settings;
+        $('community').value = s.skool.community || '';
+        $('email').value = s.skool.email || '';
+        $('whDaily').value = s.webhook.daily || '';
+        $('whEvent').value = s.webhook.event || '';
+        $('dmMin').value = s.dm.minDelayMs; $('dmMax').value = s.dm.maxDelayMs;
+        $('dmRun').value = s.dm.maxPerRun; $('dmDay').value = s.dm.maxPerDay;
+        $('autoDm').checked = !!s.autoDm.enabled;
+        $('skoolState').textContent = s.skool.hasPassword ? '✓ Skool password is set' : '⚠ no Skool password saved yet';
+        $('cfgPill').textContent = s.configured ? 'configured' : (cfg.needsAdminSetup ? 'set an admin password' : 'incomplete config');
+        $('cfgPill').style.color = s.configured ? 'var(--ok)' : 'var(--warn)';
+        loadStatus();
+      } catch (e) { toast('Load failed: ' + e.message); }
+    }
+
+    async function loadStatus() {
+      try {
+        const st = await api('/api/status');
+        const job = st.massDmJob || {};
+        $('status').innerHTML = `
+          <div class="statline"><span>Members tracked</span><b>${st.totalMembers}</b></div>
+          <div class="statline"><span>Last sync</span><b>${st.lastSyncAt ? new Date(st.lastSyncAt).toLocaleString() : '—'}</b></div>
+          <div class="statline"><span>DMs sent today</span><b>${st.dmsToday}</b></div>
+          <div class="statline"><span>Mass-DM job</span><b>${job.status || 'none'}${job.pending != null ? ' ('+job.pending+' left)' : ''}</b></div>`;
+      } catch (e) { $('status').innerHTML = '<span class="muted">'+e.message+'</span>'; }
+    }
+
+    async function saveConfig() {
+      const body = {
+        skool: { community: $('community').value, email: $('email').value },
+        webhook: { daily: $('whDaily').value, event: $('whEvent').value },
+        dm: { minDelayMs:+$('dmMin').value, maxDelayMs:+$('dmMax').value, maxPerRun:+$('dmRun').value, maxPerDay:+$('dmDay').value },
+        autoDm: { enabled: $('autoDm').checked },
+      };
+      if ($('skoolPw').value) body.skoolPassword = $('skoolPw').value;
+      if ($('newAdminPw').value) body.adminPassword = $('newAdminPw').value;
+      // Bootstrap: if no admin set yet, use the typed admin field as the new password.
+      if (!adminPw && $('adminPw').value && !body.adminPassword) body.adminPassword = $('adminPw').value;
+      try {
+        await api('/api/config', 'POST', body);
+        if (body.adminPassword) { adminPw = body.adminPassword; sessionStorage.setItem('adminPw', adminPw); }
+        $('skoolPw').value = ''; $('newAdminPw').value = '';
+        toast('Saved ✓'); loadAll();
+      } catch (e) { toast('Save failed: ' + e.message); }
+    }
+
+    async function runSync(dryRun) {
+      try { await api('/api/sync', 'POST', { dryRun }); toast(dryRun ? 'Dry-run started' : 'Sync started'); setTimeout(loadStatus, 4000); }
+      catch (e) { toast('Sync failed: ' + e.message); }
+    }
+    async function startMassDm() {
+      const raw = $('recips').value.trim();
+      const recipients = raw.toLowerCase() === 'all' ? 'all' : raw.split(',').map(s => s.trim()).filter(Boolean);
+      const template = $('tmpl').value;
+      if (!template || !raw) return toast('Add recipients and a template');
+      try { const r = await api('/api/massdm', 'POST', { recipients, template }); toast('Queued job ' + (r.job?.id || '') + ' (' + (r.job?.total||0) + ' recipients)'); loadStatus(); }
+      catch (e) { toast('Queue failed: ' + e.message); }
+    }
+    async function cancelMassDm() {
+      try { await api('/api/massdm/cancel', 'POST', {}); toast('Job cancelled'); loadStatus(); }
+      catch (e) { toast('Cancel failed: ' + e.message); }
+    }
+
+    if (adminPw) { $('adminPw').value = adminPw; }
+    loadAll();
+  </script>
+</body>
+</html>

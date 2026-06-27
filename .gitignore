@@ -9,3 +9,7 @@ data/*
 # Playwright
 playwright-report/
 test-results/
+
+# Vercel
+.vercel/
+_smoke.mjs

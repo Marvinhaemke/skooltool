@@ -1,7 +1,4 @@
-import { readFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
-import path from 'node:path';
-import { config } from './config.js';
+import { getStorage } from './storage.js';
 import { logger } from './logger.js';
 
 /**
@@ -61,17 +58,21 @@ export const DEFAULT_RULES = [
 ];
 
 export async function loadRules() {
-  const file = path.join(config.dataDir, 'rules.json');
-  if (existsSync(file)) {
-    try {
-      const rules = JSON.parse(await readFile(file, 'utf8'));
-      logger.info({ count: rules.length, file }, 'Loaded custom rules');
-      return rules;
-    } catch (err) {
-      logger.error({ err, file }, 'Failed to parse rules.json; using defaults');
-    }
+  const store = await getStorage();
+  const custom = await store.getJSON('rules');
+  if (Array.isArray(custom) && custom.length > 0) {
+    logger.info({ count: custom.length }, 'Loaded custom rules from store');
+    return custom;
   }
   return DEFAULT_RULES;
+}
+
+export async function saveRules(rules) {
+  if (!Array.isArray(rules)) throw new Error('rules must be an array');
+  const store = await getStorage();
+  await store.setJSON('rules', rules);
+  logger.info({ count: rules.length }, 'Saved custom rules');
+  return rules;
 }
 
 /** Render a DM template with values from an event/member. */

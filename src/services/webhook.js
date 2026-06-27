@@ -1,10 +1,8 @@
-import { config } from '../config.js';
 import { logger } from '../logger.js';
 
 /**
  * POST a JSON payload to a webhook (Zapier catch hook by default).
- * Uses Node's built-in fetch (Node >= 18). Retries a couple of times on
- * transient network/5xx errors.
+ * Retries a couple of times on transient network/5xx errors.
  */
 export async function postWebhook(url, payload, { retries = 3 } = {}) {
   if (!url) {
@@ -21,9 +19,7 @@ export async function postWebhook(url, payload, { retries = 3 } = {}) {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      if (!res.ok && res.status >= 500) {
-        throw new Error(`Webhook returned ${res.status}`);
-      }
+      if (!res.ok && res.status >= 500) throw new Error(`Webhook returned ${res.status}`);
       logger.info({ status: res.status, attempt }, 'Webhook posted');
       return { ok: res.ok, status: res.status };
     } catch (err) {
@@ -37,37 +33,32 @@ export async function postWebhook(url, payload, { retries = 3 } = {}) {
   throw lastErr;
 }
 
-/**
- * Send the daily digest of new members to the configured daily webhook.
- * Zapier "Catch Hook" handles both a summary object and a per-item line item
- * array, so we send both shapes for flexibility in the Zap.
- */
-export async function sendDailyNewMembers(newMembers) {
+/** Send the daily digest of new members (email + package) to the daily webhook. */
+export async function sendDailyNewMembers(settings, newMembers) {
   const payload = {
     event: 'daily_new_members',
     date: new Date().toISOString(),
-    community: config.skool.community,
+    community: settings.skool.community,
     count: newMembers.length,
-    // Flat line items — easiest to fan out in Zapier.
     members: newMembers.map((m) => ({
       handle: m.handle,
       name: m.name,
       email: m.email,
-      package: m.plan, // <- the "package" the user asked for
+      package: m.plan,
       level: m.level,
       isPaid: m.isPaid,
       joinedAt: m.joinedAt,
       profileUrl: m.profileUrl,
     })),
   };
-  return postWebhook(config.webhook.daily, payload);
+  return postWebhook(settings.webhook.daily, payload);
 }
 
 /** Send a single trigger event (new_subscription, level_reached, etc.). */
-export async function sendEvent(event) {
-  return postWebhook(config.webhook.event, {
+export async function sendEvent(settings, event) {
+  return postWebhook(settings.webhook.event, {
     ...event,
-    community: config.skool.community,
+    community: settings.skool.community,
     sentAt: new Date().toISOString(),
   });
 }
