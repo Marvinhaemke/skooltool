@@ -1,0 +1,11 @@
+node_modules/
+.env
+*.log
+
+# Local state: persisted browser session + member snapshots / DM logs
+data/*
+!data/.gitkeep
+
+# Playwright
+playwright-report/
+test-results/
