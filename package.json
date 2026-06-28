@@ -4,7 +4,7 @@
   "description": "Headless-browser automation for a Skool community: daily new-member -> Zapier webhook, rule-based + resumable mass DMs. Runs self-hosted or on Vercel.",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": "20.x"
   },
   "scripts": {
     "start": "node src/index.js",
